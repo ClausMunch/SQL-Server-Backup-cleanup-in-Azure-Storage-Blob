@@ -1,4 +1,3 @@
-CLS
 Import-Module SQLPS -DisableNameChecking
 Import-Module Az
 
@@ -67,6 +66,7 @@ FROM
 	FullBackupSet
 WHERE 
 	RowNum <= @NumberOfBackupCopies
+-- 
 UNION
 SELECT	
 	bs.checkpoint_lsn,
@@ -88,6 +88,7 @@ FROM
 	JOIN msdb.dbo.backupmediafamily bmf  ON bs.media_set_id =  bmf.media_set_id
 WHERE
 	bs.database_backup_lsn IN (SELECT checkpoint_lsn FROM FullBackupSet WHERE RowNum <= 1)
+--	AND bs.checkpoint_lsn IN ( SELECT MAX(checkpoint_lsn) FROM msdb.dbo.backupset bs WHERE type = 'I' OR type = 'D' GROUP BY database_name )
 	AND type IN ('L')
 "@
 $SQL_ServerName = "SELECT @@SERVERNAME AS 'SQLInstance'"
@@ -95,6 +96,7 @@ $SQL_ServerName = "SELECT @@SERVERNAME AS 'SQLInstance'"
 
 # Retrieve backups list from Azure
 $context = New-AzStorageContext -StorageAccountName $StorageAccountName -StorageAccountKey $StorageAccountKey
+#$filelist = Get-AzStorageBlob -Container $container -Context $context -Prefix $sqlName
 
 foreach($SQLServer in $SQLServers)
 {
@@ -112,6 +114,7 @@ foreach($SQLServer in $SQLServers)
     $SqlCmd.Connection = $connection
     $SQLInstance = New-Object System.Data.DataSet
     $SqlAdapter.Fill($SQLInstance) | Out-Null
+#    $SQLInstance = $SqlCmd.ExecuteNonQuery();
 
     $SqlCmd.CommandText = $SQL_BackupHistory
     $SqlCmd.Connection = $connection
@@ -119,9 +122,12 @@ foreach($SQLServer in $SQLServers)
     $SqlAdapter.Fill($DataSet) | Out-Null
     $connection.Close()
     
+    ## $removeFiles = $filelist.name | Where-Object {(-not $DataSet.Tables[0].Select("blobfilename='"+$_+"'") )}
     $removeList = @()
     $keepList = @()
 
+    ## $filelist -Azure Files
+    ## $DataSet  -Valid Backups
     foreach ($backupfile in $filelist)
     {
         if($backupfile.Name -in $DataSet.Tables[0].blobfilename)
